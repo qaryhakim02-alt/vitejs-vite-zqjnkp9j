@@ -8,6 +8,7 @@ import ReviewKalibrasi from './pages/ReviewKalibrasi';
 import Approve from './pages/Approve';
 import Masterlist from './pages/Masterlist';
 import CalibrationThisMonth from './pages/CalibrationThisMonth';
+import RevisiKalibrasi from './pages/RevisiKalibrasi'
 
 const defaultPageByRole = {
   teknisi: 'dashboard',
@@ -48,6 +49,8 @@ export default function App() {
         return <Masterlist />;
       case 'due_month':
         return <CalibrationThisMonth />;
+      case 'revisi': 
+        return <RevisiKalibrasi profile={profile} />;
       default:
         return null;
     }

@@ -15,6 +15,7 @@ const menuItems = [
   { key: 'approve', label: 'Generate Certificate', icon: FileCheck },
   { key: 'masterlist', label: 'Masterlist', icon: Table2 },
   { key: 'due_month', label: 'Calibration on This Month', icon: Clock },
+  { key: 'revisi', label: 'Perlu Diperbaiki', icon: Clock },
 ];
 
 export default function Navbar({ profile, currentPage, onNavigate, onLogout }) {
