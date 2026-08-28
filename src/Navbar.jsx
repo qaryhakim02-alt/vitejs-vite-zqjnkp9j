@@ -14,11 +14,13 @@ const menuItems = [
   { key: 'review', label: 'Waiting Approve', icon: Clock },
   { key: 'approve', label: 'Generate Certificate', icon: FileCheck },
   { key: 'masterlist', label: 'Masterlist', icon: Table2 },
-  { key: 'due_month', label: 'Calibration on This Month', icon: Clock },
+  { key: 'due_month', label: 'Alert Jatuh Tempo', icon: Clock },
   { key: 'revisi', label: 'Perlu Diperbaiki', icon: Clock },
+  { key: 'users', label: 'Manajemen User', icon: LayoutDashboard },
 ];
 
 export default function Navbar({ profile, currentPage, onNavigate, onLogout }) {
+  const visibleMenuItems = menuItems.filter((item) => item.key !== 'users' || profile.role === 'admin')
   return (
     <div style={styles.sidebar}>
       <style>{`
@@ -38,7 +40,7 @@ export default function Navbar({ profile, currentPage, onNavigate, onLogout }) {
       </div>
 
       <div style={styles.menuList}>
-        {menuItems.map((item) => {
+      {visibleMenuItems.map((item) => {
           const active = currentPage === item.key;
           const Icon = item.icon;
           return (
