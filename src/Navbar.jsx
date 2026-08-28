@@ -12,7 +12,6 @@ const menuItems = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { key: 'input', label: 'Kalibrasi Baru', icon: Plus },
   { key: 'review', label: 'Waiting Approve', icon: Clock },
-  { key: 'approve', label: 'Generate Certificate', icon: FileCheck },
   { key: 'masterlist', label: 'Masterlist', icon: Table2 },
   { key: 'due_month', label: 'Alert Jatuh Tempo', icon: Clock },
   { key: 'revisi', label: 'Perlu Diperbaiki', icon: Clock },
