@@ -43,26 +43,31 @@ export default function AdminUsers({ profile }) {
     setSaving(true)
     setMessage('')
 
-    const { data: { session } } = await supabase.auth.getSession()
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
 
-    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-users`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ action: 'create', ...form }),
-    })
-    const result = await res.json()
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action: 'create', ...form }),
+      })
+      const result = await res.json()
 
-    if (!res.ok) {
-      setMessage('❌ Gagal: ' + (result.error || 'Terjadi kesalahan'))
-    } else {
-      setMessage('✅ User berhasil dibuat.')
-      setForm({ username: '', full_name: '', email: '', password: '', role: 'teknisi' })
-      loadUsers()
+      if (!res.ok) {
+        setMessage('❌ Gagal: ' + (result.error || 'Terjadi kesalahan'))
+      } else {
+        setMessage('✅ User berhasil dibuat.')
+        setForm({ username: '', full_name: '', email: '', password: '', role: 'teknisi' })
+        loadUsers()
+      }
+    } catch (err) {
+      setMessage('❌ Gagal terhubung ke server: ' + err.message)
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
   }
 
   async function handleRoleChange(userId, newRole) {
@@ -78,20 +83,24 @@ export default function AdminUsers({ profile }) {
     const newPassword = window.prompt('Masukkan password baru untuk user ini (minimal 6 karakter):')
     if (!newPassword) return
 
-    const { data: { session } } = await supabase.auth.getSession()
-    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-users`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({ action: 'reset_password', user_id: userId, new_password: newPassword }),
-    })
-    const result = await res.json()
-    if (!res.ok) {
-      alert('Gagal reset password: ' + (result.error || 'Terjadi kesalahan'))
-    } else {
-      alert('Password berhasil direset.')
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ action: 'reset_password', user_id: userId, new_password: newPassword }),
+      })
+      const result = await res.json()
+      if (!res.ok) {
+        alert('Gagal reset password: ' + (result.error || 'Terjadi kesalahan'))
+      } else {
+        alert('Password berhasil direset.')
+      }
+    } catch (err) {
+      alert('Gagal terhubung ke server: ' + err.message)
     }
   }
 
