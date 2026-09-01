@@ -22,6 +22,100 @@ const styles = {
   noteSelect: { padding: 8, borderRadius: 6, border: '1px solid #D6DCDA', fontSize: 13 },
 }
 
+function buildSegments(points) {
+  const segments = []
+  let current = []
+  points.forEach((p) => {
+    if (p.value === null) {
+      if (current.length > 0) segments.push(current)
+      current = []
+    } else {
+      current.push(p)
+    }
+  })
+  if (current.length > 0) segments.push(current)
+  return segments
+}
+
+function MonthlyLineChart({ monthData }) {
+  const n = monthData.length
+  const maxVal = Math.max(...monthData.map((m) => m.actualPct || 0), 100)
+
+  const targetPoints = monthData.map((m, i) => ({
+    x: (i / (n - 1)) * 100,
+    y: 95 - (100 / maxVal) * 85,
+    label: m.label,
+  }))
+
+  const actualPoints = monthData.map((m, i) => ({
+    x: (i / (n - 1)) * 100,
+    y: m.actualPct !== null ? 95 - (m.actualPct / maxVal) * 85 : null,
+    value: m.actualPct,
+    label: m.label,
+  }))
+
+  const actualSegments = buildSegments(actualPoints)
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: 240, marginTop: 8 }}>
+      <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', top: 0, left: 0 }}>
+        <polyline
+          points={targetPoints.map((p) => `${p.x},${p.y}`).join(' ')}
+          fill="none" stroke="#E2A63B" strokeWidth="1.2" strokeDasharray="2,2"
+          vectorEffect="non-scaling-stroke"
+        />
+        {actualSegments.map((seg, i) => (
+          <polyline
+            key={i}
+            points={seg.map((p) => `${p.x},${p.y}`).join(' ')}
+            fill="none" stroke="#3FA796" strokeWidth="1.8"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+      </svg>
+
+      {actualPoints.map((p, i) => p.value !== null && (
+        <div
+          key={i}
+          style={{
+            position: 'absolute', left: `${p.x}%`, top: `${p.y}%`,
+            width: 8, height: 8, borderRadius: '50%', background: '#3FA796',
+            border: '2px solid #fff', transform: 'translate(-50%, -50%)',
+            boxShadow: '0 0 0 1px rgba(63,167,150,0.3)',
+          }}
+        />
+      ))}
+      {actualPoints.map((p, i) => p.value !== null && (
+        <div
+          key={`label-${i}`}
+          style={{
+            position: 'absolute', left: `${p.x}%`, top: `${p.y}%`,
+            transform: 'translate(-50%, calc(-100% - 12px))',
+            fontSize: 11, fontFamily: 'IBM Plex Mono, monospace', color: '#1B2422', fontWeight: 600,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {p.value}%
+        </div>
+      ))}
+
+      {monthData.map((m, i) => (
+        <div
+          key={`month-${i}`}
+          style={{
+            position: 'absolute', left: `${(i / (n - 1)) * 100}%`, bottom: 0,
+            transform: 'translateX(-50%)',
+            fontSize: 11, fontFamily: 'Inter, sans-serif', color: '#6B7371',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {m.label}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function LaporanBulanan({ profile }) {
   const currentYear = new Date().getFullYear()
   const [year, setYear] = useState(currentYear)
@@ -55,7 +149,6 @@ export default function LaporanBulanan({ profile }) {
       supabase.from('monthly_report_notes').select('*').eq('year', year),
     ])
 
-    // Plan: ambil siklus terakhir tiap alat aktif, kelompokkan due_date-nya per bulan (kalau jatuh di tahun ini)
     const latestPerSerial = {}
     ;(planRes.data || []).forEach((r) => {
       if (r.item_serials?.equipment_status !== 'active') return
@@ -94,7 +187,9 @@ export default function LaporanBulanan({ profile }) {
       const broke = brokeCounts[i]
       const outstandingEnd = Math.max(planPlusOutstanding - actual - broke, 0)
       outstandingCarry = outstandingEnd
-      const actualPct = planPlusOutstanding > 0 ? Math.round((actual / planPlusOutstanding) * 100) : null
+      const actualPct = planPlusOutstanding > 0
+        ? Math.round((actual / planPlusOutstanding) * 100)
+        : (actual > 0 ? 100 : null)
       return { label, plan, planPlusOutstanding, actual, broke, outstandingEnd, actualPct }
     })
 
@@ -139,8 +234,6 @@ export default function LaporanBulanan({ profile }) {
   const totalBroke = monthData.reduce((sum, m) => sum + m.broke, 0)
   const totalOutstanding = monthData.length > 0 ? monthData[monthData.length - 1].outstandingEnd : 0
   const totalActualPct = totalPlan > 0 ? Math.round((totalActual / totalPlan) * 100) : 0
-
-  const maxChartVal = Math.max(...monthData.map((m) => m.actualPct || 0), 100)
 
   return (
     <div style={styles.wrap}>
@@ -214,44 +307,12 @@ export default function LaporanBulanan({ profile }) {
           </div>
 
           <div style={styles.card}>
-            <div style={{ fontWeight: 700, marginBottom: 12 }}>Grafik Target vs Actual (%)</div>
-            <svg width="100%" viewBox="0 0 720 220" preserveAspectRatio="xMinYMin meet">
-  <line x1="40" y1="10" x2="40" y2="190" stroke="#E4E9E7" />
-  <line x1="40" y1="190" x2="700" y2="190" stroke="#E4E9E7" />
-
-  {(() => {
-    const points = monthData.map((m, i) => ({
-      x: 60 + i * 54,
-      yTarget: 190 - (100 / maxChartVal) * 170,
-      yActual: m.actualPct !== null ? 190 - (m.actualPct / maxChartVal) * 170 : null,
-    }))
-
-    const targetLine = points.map((p) => `${p.x},${p.yTarget}`).join(' ')
-    const actualPoints = points.filter((p) => p.yActual !== null)
-    const actualLine = actualPoints.map((p) => `${p.x},${p.yActual}`).join(' ')
-
-    return (
-      <>
-        <polyline points={targetLine} fill="none" stroke="#E2A63B" strokeWidth="2" />
-        <polyline points={actualLine} fill="none" stroke="#3FA796" strokeWidth="2" />
-        {points.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.yTarget} r="3" fill="#E2A63B" />
-            {p.yActual !== null && <circle cx={p.x} cy={p.yActual} r="3" fill="#3FA796" />}
-          </g>
-        ))}
-      </>
-    )
-  })()}
-
-  {monthData.map((m, i) => (
-    <text key={m.label} x={60 + i * 54} y={210} textAnchor="middle" fontSize="11" fill="#6B7371">{m.label}</text>
-  ))}
-</svg>
-            <div style={{ fontSize: 12, color: '#6B7371', display: 'flex', gap: 16 }}>
-              <span>🟡 Target 100%</span>
-              <span>🟢 Actual</span>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Grafik Target vs Actual (%)</div>
+            <div style={{ fontSize: 12, color: '#8A8F8D', marginBottom: 8 }}>
+              <span style={{ color: '#E2A63B' }}>●</span> Target 100% (putus-putus) &nbsp;&nbsp;
+              <span style={{ color: '#3FA796' }}>●</span> Actual
             </div>
+            <MonthlyLineChart monthData={monthData} />
           </div>
 
           <div style={styles.card}>
