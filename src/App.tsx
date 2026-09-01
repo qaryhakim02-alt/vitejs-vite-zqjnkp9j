@@ -10,6 +10,7 @@ import Masterlist from './pages/Masterlist';
 import CalibrationThisMonth from './pages/CalibrationThisMonth';
 import RevisiKalibrasi from './pages/RevisiKalibrasi';
 import AdminUsers from './pages/AdminUsers'
+import LaporanBulanan from './pages/LaporanBulanan'
 
 const defaultPageByRole = {
   teknisi: 'dashboard',
@@ -58,6 +59,8 @@ export default function App() {
         return <RevisiKalibrasi profile={profile} />;
       case 'users': 
         return <AdminUsers profile={profile} />;
+      case 'laporan': 
+        return <LaporanBulanan profile={profile} />;
       default:
         return null;
     }

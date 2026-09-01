@@ -1,31 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Plus, Clock, FileWarning, FileCheck2, AlertTriangle, ArrowRight } from 'lucide-react'
-
-function DialStat({ label, value, total, color }) {
-  const pct = total > 0 ? Math.min(value / total, 1) : 0
-  const circumference = 2 * Math.PI * 24
-  const offset = circumference * (1 - pct)
-
-  return (
-    <div className="dial-card">
-      <svg width="56" height="56" viewBox="0 0 56 56">
-        <circle cx="28" cy="28" r="24" fill="none" stroke="#E4E9E7" strokeWidth="5" />
-        <circle
-          cx="28" cy="28" r="24" fill="none"
-          stroke={color} strokeWidth="5" strokeLinecap="round"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          transform="rotate(-90 28 28)"
-        />
-      </svg>
-      <div>
-        <div className="dial-label">{label}</div>
-        <div className="dial-value">{value}</div>
-      </div>
-    </div>
-  )
-}
+import { Plus, Clock, FileWarning, FileCheck2, ArrowRight, AlertTriangle, Wrench, ClipboardList } from 'lucide-react'
 
 function StatusBadge({ status }) {
   const map = {
@@ -41,16 +16,109 @@ function StatusBadge({ status }) {
   )
 }
 
+const monthNamesId = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+
+function buildMonthlyTrend(dates) {
+  const now = new Date()
+  const months = []
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    months.push({ key: `${d.getFullYear()}-${d.getMonth()}`, label: monthNamesId[d.getMonth()], count: 0 })
+  }
+  dates.forEach((dateStr) => {
+    if (!dateStr) return
+    const d = new Date(dateStr)
+    const key = `${d.getFullYear()}-${d.getMonth()}`
+    const found = months.find((m) => m.key === key)
+    if (found) found.count += 1
+  })
+  return months
+}
+
+function TrendChart({ data }) {
+  const max = Math.max(...data.map((d) => d.count), 1)
+  const n = data.length
+
+  const points = data.map((d, i) => ({
+    x: n > 1 ? (i / (n - 1)) * 100 : 50,
+    y: 90 - (d.count / max) * 80,
+    count: d.count,
+    label: d.label,
+  }))
+
+  const lineD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+  const areaD = `M ${points[0].x} 90 ${points.map((p) => `L ${p.x} ${p.y}`).join(' ')} L ${points[points.length - 1].x} 90 Z`
+
+  return (
+    <div style={{ position: 'relative', width: '100%', height: 220, marginTop: 8 }}>
+      <svg
+        width="100%" height="100%" viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        style={{ position: 'absolute', top: 0, left: 0 }}
+      >
+        <defs>
+          <linearGradient id="trendAreaGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3FA796" stopOpacity="0.35" />
+            <stop offset="100%" stopColor="#3FA796" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill="url(#trendAreaGradient)" stroke="none" />
+        <path d={lineD} fill="none" stroke="#3FA796" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+      </svg>
+
+      {points.map((p, i) => (
+        <div key={i}>
+          <div
+            style={{
+              position: 'absolute', left: `${p.x}%`, top: `${p.y}%`,
+              width: 8, height: 8, borderRadius: '50%', background: '#3FA796',
+              border: '2px solid #fff', transform: 'translate(-50%, -50%)',
+              boxShadow: '0 0 0 1px rgba(63,167,150,0.3)',
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute', left: `${p.x}%`, top: `${p.y}%`,
+              transform: 'translate(-50%, calc(-100% - 14px))',
+              fontSize: 12, fontFamily: 'IBM Plex Mono, monospace', color: '#1B2422', fontWeight: 600,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {p.count}
+          </div>
+          <div
+            style={{
+              position: 'absolute', left: `${p.x}%`, bottom: 0,
+              transform: 'translateX(-50%)',
+              fontSize: 12, fontFamily: 'Inter, sans-serif', color: '#6B7371',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {p.label}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 const actionCardByRole = {
   teknisi: { icon: FileWarning, page: 'revisi', color: '#E2A63B', getText: (n) => `${n} data perlu diperbaiki & diajukan ulang` },
   qc: { icon: Clock, page: 'review', color: '#B5791C', getText: (n) => `${n} data menunggu review Anda` },
   admin: { icon: FileCheck2, page: 'approve', color: '#3FA796', getText: (n) => `${n} sertifikat perlu digenerate` },
 }
 
+const newCalibrationPageByRole = {
+  teknisi: 'input_new',
+  admin: 'input_external',
+  qc: 'input_new',
+}
+
 export default function Dashboard({ profile, onNavigate }) {
   const [recent, setRecent] = useState([])
-  const [stats, setStats] = useState({ total: 0, review: 0, draft: 0, approved: 0, dueSoon: 0, pendingCert: 0 })
+  const [stats, setStats] = useState({ total: 0, review: 0, draft: 0, approved: 0, dueSoon: 0, overdue: 0, pendingCert: 0 })
   const [equipmentStats, setEquipmentStats] = useState({ active: 0, damaged: 0, lost: 0, retired: 0 })
+  const [trend, setTrend] = useState([])
   const [actionCount, setActionCount] = useState(0)
   const [loading, setLoading] = useState(true)
 
@@ -61,14 +129,15 @@ export default function Dashboard({ profile, onNavigate }) {
       const in30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
       const [
-        totalRes, reviewRes, draftRes, approvedRes, dueSoonRes, pendingCertRes,
-        activeRes, damagedRes, lostRes, retiredRes, recentRes,
+        totalRes, reviewRes, draftRes, approvedRes, dueSoonRes, overdueRes, pendingCertRes,
+        activeRes, damagedRes, lostRes, retiredRes, recentRes, trendDatesRes,
       ] = await Promise.all([
         supabase.from('calibration_records').select('id', { count: 'exact', head: true }),
         supabase.from('calibration_records').select('id', { count: 'exact', head: true }).eq('status', 'review'),
         supabase.from('calibration_records').select('id', { count: 'exact', head: true }).eq('status', 'draft'),
         supabase.from('calibration_records').select('id', { count: 'exact', head: true }).eq('status', 'approved'),
         supabase.from('calibration_records').select('id', { count: 'exact', head: true }).eq('status', 'approved').lte('due_date', in30Days).gte('due_date', today),
+        supabase.from('calibration_records').select('id', { count: 'exact', head: true }).eq('status', 'approved').lt('due_date', today),
         supabase.from('calibration_records').select('id', { count: 'exact', head: true }).eq('status', 'approved').eq('is_external', false).is('certificate_number', null),
         supabase.from('item_serials').select('id', { count: 'exact', head: true }).eq('equipment_status', 'active'),
         supabase.from('item_serials').select('id', { count: 'exact', head: true }).eq('equipment_status', 'damaged'),
@@ -82,6 +151,7 @@ export default function Dashboard({ profile, onNavigate }) {
           `)
           .order('created_at', { ascending: false })
           .limit(6),
+        supabase.from('calibration_records').select('calibration_date').eq('status', 'approved'),
       ])
 
       setStats({
@@ -90,6 +160,7 @@ export default function Dashboard({ profile, onNavigate }) {
         draft: draftRes.count || 0,
         approved: approvedRes.count || 0,
         dueSoon: dueSoonRes.count || 0,
+        overdue: overdueRes.count || 0,
         pendingCert: pendingCertRes.count || 0,
       })
       setEquipmentStats({
@@ -99,6 +170,7 @@ export default function Dashboard({ profile, onNavigate }) {
         retired: retiredRes.count || 0,
       })
       setRecent(recentRes.data || [])
+      setTrend(buildMonthlyTrend((trendDatesRes.data || []).map((r) => r.calibration_date)))
       setLoading(false)
     }
     load()
@@ -119,6 +191,9 @@ export default function Dashboard({ profile, onNavigate }) {
   }, [profile, stats.review, stats.pendingCert])
 
   const actionCfg = actionCardByRole[profile.role]
+  const newCalibPage = newCalibrationPageByRole[profile.role] || 'input_new'
+  const totalEquipment = equipmentStats.active + equipmentStats.damaged + equipmentStats.lost + equipmentStats.retired
+  const dueAlertLevel = stats.overdue > 0 ? 'red' : stats.dueSoon > 0 ? 'yellow' : 'none'
 
   return (
     <div className="dash-wrap">
@@ -154,20 +229,33 @@ export default function Dashboard({ profile, onNavigate }) {
           border: none; border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
         }
 
-        .dial-row { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; }
-        .dial-card {
-          flex: 1; min-width: 165px; background: #fff; border-radius: 12px;
-          padding: 16px; display: flex; align-items: center; gap: 12px;
-          border: 1px solid #E4E9E7;
-        }
-        .dial-label { font-size: 12px; color: #6B7371; margin-bottom: 2px; }
-        .dial-value { font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700; }
+        .card-row { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+        .info-card { flex: 1; min-width: 220px; background: #fff; border-radius: 12px; border: 1px solid #E4E9E7; padding: 18px 20px; position: relative; overflow: hidden; }
+        .info-card-title { font-size: 12px; color: #6B7371; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; position: relative; z-index: 1; }
 
-        .equip-row { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
-        .equip-card { flex: 1; min-width: 130px; background: #fff; border-radius: 12px; border: 1px solid #E4E9E7; padding: 14px 16px; }
-        .equip-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-        .equip-label { font-size: 12px; color: #6B7371; }
-        .equip-value { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; margin-top: 2px; }
+        .total-num { font-family: 'Space Grotesk', sans-serif; font-size: 40px; font-weight: 700; position: relative; z-index: 1; }
+        .total-sub { font-size: 12px; color: #8A8F8D; margin-top: 4px; position: relative; z-index: 1; }
+        .total-icon { position: absolute; right: -10px; bottom: -10px; z-index: 0; }
+
+        .status-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; font-size: 13px; }
+        .status-row-left { display: flex; align-items: center; gap: 8px; }
+        .status-row-value { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; }
+
+        .segbar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; margin-bottom: 12px; background: #EEF0EF; }
+        .legend-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; padding: 3px 0; }
+        .legend-left { display: flex; align-items: center; gap: 8px; }
+        .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+        .alert-card-red { background: #FBEAEA; border: 1px solid #F2C9C9; }
+        .alert-card-yellow { background: #FBF1DD; border: 1px solid #F0DFAD; }
+        .alert-num-row { display: flex; gap: 20px; margin-top: 6px; }
+        .alert-num-block { text-align: left; }
+        .alert-num { font-family: 'Space Grotesk', sans-serif; font-size: 26px; font-weight: 700; }
+        .alert-num-label { font-size: 11px; color: #6B7371; }
+        .alert-link { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: #1B2422; background: none; border: none; cursor: pointer; margin-top: 10px; }
+
+        .trend-card { background: #fff; border-radius: 12px; border: 1px solid #E4E9E7; padding: 20px; margin-bottom: 24px; }
+        .trend-header { font-size: 13px; color: #6B7371; font-weight: 600; margin-bottom: 12px; }
 
         .table-card { background: #fff; border-radius: 12px; border: 1px solid #E4E9E7; overflow: hidden; }
         .table-header { padding: 16px 20px; font-size: 13px; color: #6B7371; font-weight: 600; border-bottom: 1px solid #E4E9E7; }
@@ -184,7 +272,7 @@ export default function Dashboard({ profile, onNavigate }) {
       <div className="dash-eyebrow">SELAMAT DATANG, {(profile.full_name || 'USER').toUpperCase()}</div>
       <div className="dash-header-row">
         <h1 className="dash-title">Dashboard Kalibrasi</h1>
-        <button className="btn-primary" onClick={() => onNavigate('input_new')}>
+        <button className="btn-primary" onClick={() => onNavigate(newCalibPage)}>
           <Plus size={16} /> Kalibrasi Baru
         </button>
       </div>
@@ -201,31 +289,77 @@ export default function Dashboard({ profile, onNavigate }) {
         </div>
       )}
 
-      <div className="dial-row">
-        <DialStat label="Total Rekaman" value={stats.total} total={Math.max(stats.total, 1)} color="#1B2422" />
-        <DialStat label="Menunggu QC" value={stats.review} total={Math.max(stats.total, 1)} color="#E2A63B" />
-        <DialStat label="Perlu Diperbaiki" value={stats.draft} total={Math.max(stats.total, 1)} color="#D64545" />
-        <DialStat label="Perlu Generate Certificate" value={stats.pendingCert} total={Math.max(stats.total, 1)} color="#3FA796" />
-        <DialStat label="Jatuh Tempo ≤30 Hari" value={stats.dueSoon} total={Math.max(stats.total, 1)} color="#B5791C" />
+      <div className="card-row">
+        <div className="info-card">
+          <div className="info-card-title">Total Rekaman</div>
+          <div className="total-num">{stats.total}</div>
+          <div className="total-sub">Seluruh riwayat kalibrasi tercatat</div>
+          <ClipboardList size={80} color="#E4E9E7" className="total-icon" />
+        </div>
+
+        <div className="info-card">
+          <div className="info-card-title"><Clock size={14} /> Status Proses Kalibrasi</div>
+          <div className="status-row">
+            <div className="status-row-left"><Clock size={14} color="#E2A63B" /> Menunggu QC</div>
+            <div className="status-row-value" style={{ color: '#E2A63B' }}>{stats.review}</div>
+          </div>
+          <div className="status-row">
+            <div className="status-row-left"><FileWarning size={14} color="#D64545" /> Perlu Diperbaiki</div>
+            <div className="status-row-value" style={{ color: '#D64545' }}>{stats.draft}</div>
+          </div>
+          <div className="status-row">
+            <div className="status-row-left"><FileCheck2 size={14} color="#3FA796" /> Perlu Sertifikat</div>
+            <div className="status-row-value" style={{ color: '#3FA796' }}>{stats.pendingCert}</div>
+          </div>
+        </div>
+
+        <div className="info-card">
+          <div className="info-card-title"><Wrench size={14} /> Kondisi Alat</div>
+          <div className="segbar">
+            {totalEquipment > 0 && (
+              <>
+                <div style={{ width: `${(equipmentStats.active / totalEquipment) * 100}%`, background: '#1C7A63' }} />
+                <div style={{ width: `${(equipmentStats.damaged / totalEquipment) * 100}%`, background: '#D64545' }} />
+                <div style={{ width: `${(equipmentStats.lost / totalEquipment) * 100}%`, background: '#8A8F8D' }} />
+                <div style={{ width: `${(equipmentStats.retired / totalEquipment) * 100}%`, background: '#C8CDCB' }} />
+              </>
+            )}
+          </div>
+          <div className="legend-row">
+            <div className="legend-left"><span className="legend-dot" style={{ background: '#1C7A63' }}></span>Aktif</div>
+            <b>{equipmentStats.active}</b>
+          </div>
+          <div className="legend-row">
+            <div className="legend-left"><span className="legend-dot" style={{ background: '#D64545' }}></span>Rusak</div>
+            <b>{equipmentStats.damaged}</b>
+          </div>
+          <div className="legend-row">
+            <div className="legend-left"><span className="legend-dot" style={{ background: '#8A8F8D' }}></span>Hilang / Tidak Dipakai</div>
+            <b>{equipmentStats.lost + equipmentStats.retired}</b>
+          </div>
+        </div>
+
+        <div className={`info-card ${dueAlertLevel === 'red' ? 'alert-card-red' : dueAlertLevel === 'yellow' ? 'alert-card-yellow' : ''}`}>
+          <div className="info-card-title"><AlertTriangle size={14} color={dueAlertLevel === 'red' ? '#B3261E' : dueAlertLevel === 'yellow' ? '#B5791C' : '#6B7371'} /> Alert Jatuh Tempo</div>
+          <div className="alert-num-row">
+            <div className="alert-num-block">
+              <div className="alert-num" style={{ color: stats.overdue > 0 ? '#B3261E' : '#1B2422' }}>{stats.overdue}</div>
+              <div className="alert-num-label">Sudah Lewat</div>
+            </div>
+            <div className="alert-num-block">
+              <div className="alert-num" style={{ color: stats.dueSoon > 0 ? '#B5791C' : '#1B2422' }}>{stats.dueSoon}</div>
+              <div className="alert-num-label">≤30 Hari</div>
+            </div>
+          </div>
+          <button className="alert-link" onClick={() => onNavigate('due_month')}>
+            Lihat detail <ArrowRight size={13} />
+          </button>
+        </div>
       </div>
 
-      <div className="equip-row">
-        <div className="equip-card">
-          <div className="equip-label"><span className="equip-dot" style={{ background: '#1C7A63' }}></span>Alat Aktif</div>
-          <div className="equip-value">{equipmentStats.active}</div>
-        </div>
-        <div className="equip-card">
-          <div className="equip-label"><span className="equip-dot" style={{ background: '#B3261E' }}></span>Rusak</div>
-          <div className="equip-value">{equipmentStats.damaged}</div>
-        </div>
-        <div className="equip-card">
-          <div className="equip-label"><span className="equip-dot" style={{ background: '#8A8F8D' }}></span>Hilang</div>
-          <div className="equip-value">{equipmentStats.lost}</div>
-        </div>
-        <div className="equip-card">
-          <div className="equip-label"><span className="equip-dot" style={{ background: '#8A8F8D' }}></span>Tidak Dipakai</div>
-          <div className="equip-value">{equipmentStats.retired}</div>
-        </div>
+      <div className="trend-card">
+        <div className="trend-header">TREN KALIBRASI SELESAI — 6 BULAN TERAKHIR</div>
+        {loading ? <p>Memuat grafik...</p> : <TrendChart data={trend} />}
       </div>
 
       <div className="table-card">

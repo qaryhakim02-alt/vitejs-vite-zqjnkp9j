@@ -142,9 +142,9 @@ export default function Masterlist({ profile }) {
       note = window.prompt(`Keterangan (opsional) untuk status "${statusLabel[newStatus].text}":`) || null
     }
     const { error } = await supabase
-      .from('item_serials')
-      .update({ equipment_status: newStatus, status_note: note })
-      .eq('id', serialId)
+  .from('item_serials')
+  .update({ equipment_status: newStatus, status_note: note, equipment_status_changed_at: new Date().toISOString() })
+  .eq('id', serialId)
 
     if (error) {
       alert('Gagal update status: ' + error.message)
