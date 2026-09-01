@@ -10,8 +10,11 @@ import {
 
 const menuItems = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'input', label: 'Kalibrasi Baru', icon: Plus },
+  { key: 'input_new', label: 'Kalibrasi Baru', icon: Plus },
+  { key: 're_kalibrasi', label: 'Re-Kalibrasi', icon: Clock },
+  { key: 'input_external', label: 'Kalibrasi Eksternal', icon: FileCheck },
   { key: 'review', label: 'Waiting Approve', icon: Clock },
+  { key: 'approve', label: 'Generate Certificate', icon: FileCheck },
   { key: 'masterlist', label: 'Masterlist', icon: Table2 },
   { key: 'due_month', label: 'Alert Jatuh Tempo', icon: Clock },
   { key: 'revisi', label: 'Perlu Diperbaiki', icon: Clock },

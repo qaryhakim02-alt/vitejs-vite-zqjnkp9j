@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Download } from 'lucide-react'
+import { Download, History, X } from 'lucide-react'
 
 const thStyle = { border: '1px solid #ccc', padding: 8, background: '#f0f0f0', textAlign: 'left', whiteSpace: 'nowrap' }
 const tdStyle = { border: '1px solid #ccc', padding: 8, whiteSpace: 'nowrap' }
@@ -12,9 +12,104 @@ const statusLabel = {
   retired: { text: 'Tidak Dipakai', color: '#8A8F8D', bg: '#EEF0EF' },
 }
 
+const recordStatusLabel = {
+  draft: { text: 'Draft / Ditolak', color: '#B3261E', bg: '#FBEAEA' },
+  review: { text: 'Menunggu QC', color: '#B5791C', bg: '#FBF1DD' },
+  approved: { text: 'Disetujui', color: '#1C7A63', bg: '#E2F3EE' },
+}
+
+const modalStyles = {
+  overlay: {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+  },
+  box: {
+    background: '#fff', borderRadius: 12, padding: 24, maxWidth: 900, width: '90%',
+    maxHeight: '80vh', overflowY: 'auto', fontFamily: 'Inter, sans-serif',
+  },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  title: { fontSize: 18, fontWeight: 700, margin: 0 },
+  closeBtn: { background: 'none', border: 'none', cursor: 'pointer', color: '#8A8F8D' },
+  badge: { fontSize: 12, fontWeight: 600, padding: '4px 10px', borderRadius: 999, display: 'inline-block' },
+}
+
+function HistoryModal({ serialId, itemName, serialNo, onClose }) {
+  const [history, setHistory] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('calibration_records')
+        .select('id, calibration_date, due_date, status, judgement, certificate_number, certificate_url, remark, qc_notes, is_external')
+        .eq('item_serial_id', serialId)
+        .order('calibration_date', { ascending: false })
+
+      if (!error) setHistory(data)
+      setLoading(false)
+    }
+    load()
+  }, [serialId])
+
+  return (
+    <div style={modalStyles.overlay} onClick={onClose}>
+      <div style={modalStyles.box} onClick={(e) => e.stopPropagation()}>
+        <div style={modalStyles.header}>
+          <h3 style={modalStyles.title}>Riwayat Kalibrasi — {itemName} (SN: {serialNo})</h3>
+          <button style={modalStyles.closeBtn} onClick={onClose}><X size={20} /></button>
+        </div>
+
+        {loading ? (
+          <p>Memuat riwayat...</p>
+        ) : history.length === 0 ? (
+          <p>Belum ada riwayat kalibrasi untuk alat ini.</p>
+        ) : (
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Tanggal Kalibrasi</th>
+                <th style={thStyle}>Due Date</th>
+                <th style={thStyle}>Status</th>
+                <th style={thStyle}>Judgement</th>
+                <th style={thStyle}>No. Sertifikat</th>
+                <th style={thStyle}>Eksternal</th>
+                <th style={thStyle}>Catatan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h) => {
+                const label = recordStatusLabel[h.status] || recordStatusLabel.draft
+                return (
+                  <tr key={h.id}>
+                    <td style={tdStyle}>{h.calibration_date || '-'}</td>
+                    <td style={tdStyle}>{h.due_date || '-'}</td>
+                    <td style={tdStyle}>
+                      <span style={{ ...modalStyles.badge, color: label.color, background: label.bg }}>{label.text}</span>
+                    </td>
+                    <td style={tdStyle}>{h.judgement || '-'}</td>
+                    <td style={tdStyle}>
+                      {h.certificate_url ? (
+                        <a href={h.certificate_url} target="_blank" rel="noreferrer">{h.certificate_number}</a>
+                      ) : (h.certificate_number || '-')}
+                    </td>
+                    <td style={tdStyle}>{h.is_external ? 'Ya' : 'Tidak'}</td>
+                    <td style={tdStyle}>{h.qc_notes || h.remark || '-'}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function Masterlist({ profile }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
+  const [historyTarget, setHistoryTarget] = useState(null)
   const canManageStatus = profile?.role === 'admin' || profile?.role === 'qc'
 
   async function loadRecords() {
@@ -143,6 +238,7 @@ export default function Masterlist({ profile }) {
               <th style={thStyle}>Remark</th>
               <th style={thStyle}>Eksternal</th>
               <th style={thStyle}>Status Alat</th>
+              <th style={thStyle}>Riwayat</th>
             </tr>
           </thead>
           <tbody>
@@ -158,7 +254,11 @@ export default function Masterlist({ profile }) {
                   <td style={tdStyle}>{r.range}</td>
                   <td style={tdStyle}>{r.unit}</td>
                   <td style={tdStyle}>{r.item_serials?.serial_no}</td>
-                  <td style={tdStyle}>{r.certificate_number || '-'}</td>
+                  <td style={tdStyle}>
+  {r.certificate_url ? (
+    <a href={r.certificate_url} target="_blank" rel="noreferrer">{r.certificate_number}</a>
+  ) : (r.certificate_number || '-')}
+</td>
                   <td style={tdStyle}>{r.item_serials?.date_of_first_used || '-'}</td>
                   <td style={tdStyle}>{r.calibration_date}</td>
                   <td style={tdStyle}>{r.due_date}</td>
@@ -180,7 +280,6 @@ export default function Masterlist({ profile }) {
                         <option value="damaged">Rusak</option>
                         <option value="lost">Hilang</option>
                         <option value="retired">Tidak Dipakai</option>
-                        <option value="Spare">Spare</option>
                       </select>
                     ) : (
                       <span style={{ color: label.color, background: label.bg, padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
@@ -188,11 +287,35 @@ export default function Masterlist({ profile }) {
                       </span>
                     )}
                   </td>
+                  <td style={tdStyle}>
+                    <button
+                      onClick={() => setHistoryTarget({
+                        serialId: r.item_serials?.id,
+                        itemName: r.item_serials?.items?.item_name,
+                        serialNo: r.item_serials?.serial_no,
+                      })}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px',
+                        background: '#fff', border: '1px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 12,
+                      }}
+                    >
+                      <History size={13} /> Riwayat
+                    </button>
+                  </td>
                 </tr>
               )
             })}
           </tbody>
         </table>
+      )}
+
+      {historyTarget && (
+        <HistoryModal
+          serialId={historyTarget.serialId}
+          itemName={historyTarget.itemName}
+          serialNo={historyTarget.serialNo}
+          onClose={() => setHistoryTarget(null)}
+        />
       )}
     </div>
   )

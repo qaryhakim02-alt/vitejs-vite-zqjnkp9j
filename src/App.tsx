@@ -40,8 +40,12 @@ export default function App() {
     switch (currentPage) {
       case 'dashboard':
         return <Dashboard profile={profile} onNavigate={setCurrentPage} />;
-      case 'input':
-        return <InputKalibrasi profile={profile} onNavigate={setCurrentPage} />;
+      case 'input_new': 
+        return <InputKalibrasi profile={profile} onNavigate={setCurrentPage} mode="new" />
+      case 're_kalibrasi': 
+        return <InputKalibrasi profile={profile} onNavigate={setCurrentPage} mode="re" />
+      case 'input_external': 
+        return <InputKalibrasi profile={profile} onNavigate={setCurrentPage} mode="external" />
       case 'review':
         return <ReviewKalibrasi profile={profile} />;
       case 'approve':
