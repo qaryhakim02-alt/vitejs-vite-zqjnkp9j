@@ -92,7 +92,7 @@ export default function InputKalibrasi({ profile, onNavigate, mode = 'new' }) {
   const [form, setForm] = useState({
     item_name: '', merk_brand: '', range: '', type_model: '',
     serial_no: '', asset_tag: '', location_area: '', date_of_first_used: '',
-    scope_of_instruments: '', unit: '',
+    scope_of_instruments: '', unit: '', acceptance_tolerance: '',
     certificate_number_draft: '', calibration_date: today, due_date: nextYear,
     reference_method: '', room_temperature: '', humidity: '', lab_name: '',
     calibration_by_manual: '',
@@ -166,7 +166,7 @@ export default function InputKalibrasi({ profile, onNavigate, mode = 'new' }) {
     setForm({
       item_name: '', merk_brand: '', range: '', type_model: '',
       serial_no: '', asset_tag: '', location_area: '', date_of_first_used: '',
-      scope_of_instruments: '', unit: '',
+      scope_of_instruments: '', unit: '', acceptance_tolerance: '',
       certificate_number_draft: '', calibration_date: today, due_date: nextYear,
       reference_method: '', room_temperature: '', humidity: '', lab_name: '',
       calibration_by_manual: '',
@@ -242,7 +242,7 @@ export default function InputKalibrasi({ profile, onNavigate, mode = 'new' }) {
         .insert({
           item_serial_id: itemSerialId,
           scope_of_instruments: form.scope_of_instruments,
-          range: form.range, unit: form.unit,
+          range: form.range, unit: form.unit, acceptance_tolerance: form.acceptance_tolerance,
           certificate_number_draft: form.certificate_number_draft,
           certificate_number: cfg.forceExternal ? externalCertNumber : null,
           certificate_url: externalCertUrl,
@@ -381,6 +381,9 @@ export default function InputKalibrasi({ profile, onNavigate, mode = 'new' }) {
           <Field label="Unit">
             <input style={styles.input} placeholder="g, mm" value={form.unit} onChange={(e) => handleChange('unit', e.target.value)} />
           </Field>
+          <Field label="Acceptance Tolerance">
+  <input style={styles.input} placeholder="Mis. ± 0.5%" value={form.acceptance_tolerance} onChange={(e) => handleChange('acceptance_tolerance', e.target.value)} />
+</Field>
         </div>
 
         <div style={styles.section}>Informasi Kalibrasi</div>
