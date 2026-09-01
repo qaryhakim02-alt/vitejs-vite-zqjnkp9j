@@ -10,6 +10,7 @@ import Masterlist from './pages/Masterlist';
 import CalibrationThisMonth from './pages/CalibrationThisMonth';
 import RevisiKalibrasi from './pages/RevisiKalibrasi';
 import AdminUsers from './pages/AdminUsers'
+import LaporanBulanan from './pages/LaporanBulanan'
 
 const defaultPageByRole = {
   teknisi: 'dashboard',
@@ -40,8 +41,12 @@ export default function App() {
     switch (currentPage) {
       case 'dashboard':
         return <Dashboard profile={profile} onNavigate={setCurrentPage} />;
-      case 'input':
-        return <InputKalibrasi profile={profile} onNavigate={setCurrentPage} />;
+      case 'input_new': 
+        return <InputKalibrasi profile={profile} onNavigate={setCurrentPage} mode="new" />
+      case 're_kalibrasi': 
+        return <InputKalibrasi profile={profile} onNavigate={setCurrentPage} mode="re" />
+      case 'input_external': 
+        return <InputKalibrasi profile={profile} onNavigate={setCurrentPage} mode="external" />
       case 'review':
         return <ReviewKalibrasi profile={profile} />;
       case 'approve':
@@ -54,6 +59,8 @@ export default function App() {
         return <RevisiKalibrasi profile={profile} />;
       case 'users': 
         return <AdminUsers profile={profile} />;
+      case 'laporan': 
+        return <LaporanBulanan profile={profile} />;
       default:
         return null;
     }

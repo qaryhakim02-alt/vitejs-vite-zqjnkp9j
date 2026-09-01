@@ -27,6 +27,41 @@ const styles = {
   searchResultItem: { padding: '10px 12px', borderBottom: '1px solid #F0F2F1', cursor: 'pointer', fontSize: 13 },
   selectedBox: { display: 'flex', alignItems: 'center', gap: 8, background: '#E2F3EE', border: '1px solid #B7DED2', borderRadius: 8, padding: '10px 14px', marginTop: 10, fontSize: 13 },
   clearLink: { marginLeft: 'auto', color: '#3FA796', fontWeight: 600, cursor: 'pointer', background: 'none', border: 'none' },
+  lockedBox: { background: '#FBF1DD', border: '1px solid #F0DFAD', borderRadius: 8, padding: 12, marginTop: 16, fontSize: 13 },
+  extBox: { background: '#FBF1DD', padding: 16, borderRadius: 8, marginTop: 12 },
+}
+
+const modeConfig = {
+  new: {
+    title: 'Input Kalibrasi Baru',
+    subtitle: 'Untuk alat yang baru pertama kali masuk sistem.',
+    showSearch: false,
+    requireExisting: false,
+    forceExternal: false,
+    allowedRole: 'teknisi',
+    showEnvFields: true,
+    showMeasurementPoints: true,
+  },
+  re: {
+    title: 'Re-Kalibrasi Alat',
+    subtitle: 'Cari alat yang sudah ada berdasarkan serial number, lalu perbarui data kalibrasinya.',
+    showSearch: true,
+    requireExisting: true,
+    forceExternal: false,
+    allowedRole: 'teknisi',
+    showEnvFields: true,
+    showMeasurementPoints: true,
+  },
+  external: {
+    title: 'Input Kalibrasi Eksternal',
+    subtitle: 'Input data alat dan sertifikat dari laboratorium eksternal/supplier.',
+    showSearch: true,
+    requireExisting: false,
+    forceExternal: true,
+    allowedRole: 'admin',
+    showEnvFields: false,
+    showMeasurementPoints: false,
+  },
 }
 
 function emptyPoint() {
@@ -43,14 +78,16 @@ function Field({ label, hint, children }) {
   )
 }
 
-export default function InputKalibrasi({ profile, onNavigate }) {
+export default function InputKalibrasi({ profile, onNavigate, mode = 'new' }) {
+  const cfg = modeConfig[mode] || modeConfig.new
+  const canSubmit = profile.role === cfg.allowedRole
   const today = new Date().toISOString().slice(0, 10)
   const nextYear = new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().slice(0, 10)
 
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
-  const [selected, setSelected] = useState(null) // { itemSerialId, itemId }
+  const [selected, setSelected] = useState(null)
 
   const [form, setForm] = useState({
     item_name: '', merk_brand: '', range: '', type_model: '',
@@ -58,9 +95,12 @@ export default function InputKalibrasi({ profile, onNavigate }) {
     scope_of_instruments: '', unit: '',
     certificate_number_draft: '', calibration_date: today, due_date: nextYear,
     reference_method: '', room_temperature: '', humidity: '', lab_name: '',
-    is_external: false, judgement: 'pass', remark: '',
+    calibration_by_manual: '',
+    judgement: 'pass', remark: '',
   })
   const [points, setPoints] = useState([emptyPoint()])
+  const [externalCertNumber, setExternalCertNumber] = useState('')
+  const [externalCertFile, setExternalCertFile] = useState(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
 
@@ -122,8 +162,30 @@ export default function InputKalibrasi({ profile, onNavigate }) {
     setPoints((prev) => prev.filter((_, i) => i !== index))
   }
 
+  function resetForm() {
+    setForm({
+      item_name: '', merk_brand: '', range: '', type_model: '',
+      serial_no: '', asset_tag: '', location_area: '', date_of_first_used: '',
+      scope_of_instruments: '', unit: '',
+      certificate_number_draft: '', calibration_date: today, due_date: nextYear,
+      reference_method: '', room_temperature: '', humidity: '', lab_name: '',
+      calibration_by_manual: '',
+      judgement: 'pass', remark: '',
+    })
+    setPoints([emptyPoint()])
+    setSelected(null)
+    setExternalCertNumber('')
+    setExternalCertFile(null)
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
+
+    if (cfg.requireExisting && !selected) {
+      setMessage('❌ Untuk Re-Kalibrasi, pilih dulu alat dari hasil pencarian di atas.')
+      return
+    }
+
     setLoading(true)
     setMessage('')
 
@@ -132,7 +194,6 @@ export default function InputKalibrasi({ profile, onNavigate }) {
       let itemSerialId = selected?.itemSerialId
 
       if (selected) {
-        // Alat sudah ada -> update data terbaru (kalau ada perubahan)
         const { error: itemError } = await supabase
           .from('items')
           .update({ item_name: form.item_name, type_model: form.type_model, merk_brand: form.merk_brand })
@@ -148,7 +209,6 @@ export default function InputKalibrasi({ profile, onNavigate }) {
           .eq('id', itemSerialId)
         if (serialError) throw serialError
       } else {
-        // Alat baru -> insert
         const { data: item, error: itemError } = await supabase
           .from('items')
           .insert({ item_name: form.item_name, type_model: form.type_model, merk_brand: form.merk_brand })
@@ -167,6 +227,16 @@ export default function InputKalibrasi({ profile, onNavigate }) {
         itemSerialId = serial.id
       }
 
+      let externalCertUrl = null
+      if (cfg.forceExternal && externalCertFile) {
+        const fileExt = externalCertFile.name.split('.').pop()
+        const fileName = `external-${Date.now()}.${fileExt}`
+        const { error: uploadError } = await supabase.storage.from('certificates').upload(fileName, externalCertFile)
+        if (uploadError) throw uploadError
+        const { data: urlData } = supabase.storage.from('certificates').getPublicUrl(fileName)
+        externalCertUrl = urlData.publicUrl
+      }
+
       const { data: record, error: recordError } = await supabase
         .from('calibration_records')
         .insert({
@@ -174,14 +244,16 @@ export default function InputKalibrasi({ profile, onNavigate }) {
           scope_of_instruments: form.scope_of_instruments,
           range: form.range, unit: form.unit,
           certificate_number_draft: form.certificate_number_draft,
+          certificate_number: cfg.forceExternal ? externalCertNumber : null,
+          certificate_url: externalCertUrl,
           calibration_date: form.calibration_date || null,
           due_date: form.due_date || null,
           reference_method: form.reference_method,
           room_temperature: form.room_temperature || null,
           humidity: form.humidity || null,
-          calibration_by: profile.full_name,
+          calibration_by: cfg.forceExternal ? form.calibration_by_manual : profile.full_name,
           lab_name: form.lab_name,
-          is_external: form.is_external,
+          is_external: cfg.forceExternal,
           judgement: form.judgement,
           remark: form.remark,
           status: 'review',
@@ -190,34 +262,27 @@ export default function InputKalibrasi({ profile, onNavigate }) {
         .select().single()
       if (recordError) throw recordError
 
-      const pointRows = points
-        .filter((p) => p.point_label || p.standard_value || p.reading_value)
-        .map((p, i) => ({
-          calibration_record_id: record.id,
-          point_label: p.point_label,
-          standard_value: p.standard_value || null,
-          reading_value: p.reading_value || null,
-          uncertainty: p.uncertainty || null,
-          note: p.note,
-          sort_order: i,
-        }))
+      if (cfg.showMeasurementPoints) {
+        const pointRows = points
+          .filter((p) => p.point_label || p.standard_value || p.reading_value)
+          .map((p, i) => ({
+            calibration_record_id: record.id,
+            point_label: p.point_label,
+            standard_value: p.standard_value || null,
+            reading_value: p.reading_value || null,
+            uncertainty: p.uncertainty || null,
+            note: p.note,
+            sort_order: i,
+          }))
 
-      if (pointRows.length > 0) {
-        const { error: pointsError } = await supabase.from('calibration_measurement_points').insert(pointRows)
-        if (pointsError) throw pointsError
+        if (pointRows.length > 0) {
+          const { error: pointsError } = await supabase.from('calibration_measurement_points').insert(pointRows)
+          if (pointsError) throw pointsError
+        }
       }
 
       setMessage('✅ Data kalibrasi berhasil disimpan dan diajukan untuk persetujuan.')
-      setForm({
-        item_name: '', merk_brand: '', range: '', type_model: '',
-        serial_no: '', asset_tag: '', location_area: '', date_of_first_used: '',
-        scope_of_instruments: '', unit: '',
-        certificate_number_draft: '', calibration_date: today, due_date: nextYear,
-        reference_method: '', room_temperature: '', humidity: '', lab_name: '',
-        is_external: false, judgement: 'pass', remark: '',
-      })
-      setPoints([emptyPoint()])
-      setSelected(null)
+      resetForm()
     } catch (err) {
       setMessage('❌ Gagal menyimpan: ' + err.message)
     } finally {
@@ -227,71 +292,88 @@ export default function InputKalibrasi({ profile, onNavigate }) {
 
   return (
     <div style={styles.wrap}>
-      <button style={styles.back} onClick={() => onNavigate && onNavigate('dashboard')}>← Rekaman Baru</button>
-      <h1 style={styles.title}>Input Hasil Kalibrasi</h1>
+      <button style={styles.back} onClick={() => onNavigate && onNavigate('dashboard')}>← Kembali</button>
+      <h1 style={styles.title}>{cfg.title}</h1>
+      <p style={{ color: '#6B7371', marginTop: -16, marginBottom: 20, fontSize: 14 }}>{cfg.subtitle}</p>
 
-      <div style={styles.searchBox}>
-        <label style={styles.label}>Cari Alat yang Sudah Ada (berdasarkan Serial Number)</label>
-        <div style={styles.searchInputRow}>
-          <Search size={16} color="#8A8F8D" />
-          <input
-            style={{ border: 'none', outline: 'none', flex: 1, fontSize: 14, fontFamily: 'IBM Plex Mono, monospace' }}
-            placeholder="Ketik serial number..."
-            value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-            disabled={!!selected}
-          />
+      {!canSubmit && (
+        <div style={styles.lockedBox}>
+          🔒 Halaman ini hanya bisa diisi oleh role <b>{cfg.allowedRole}</b>. Anda hanya bisa melihat tampilannya.
         </div>
+      )}
 
-        {searching && <p style={{ fontSize: 12, color: '#8A8F8D', marginTop: 8 }}>Mencari...</p>}
-
-        {searchResults.length > 0 && (
-          <div style={styles.searchResults}>
-            {searchResults.map((r) => (
-              <div key={r.id} style={styles.searchResultItem} onClick={() => selectExisting(r)}>
-                <b>{r.items?.item_name}</b> — SN: {r.serial_no} ({r.items?.merk_brand}, {r.location_area || '-'})
-              </div>
-            ))}
+      {cfg.showSearch && (
+        <div style={styles.searchBox}>
+          <label style={styles.label}>
+            Cari Alat yang Sudah Ada (berdasarkan Serial Number) {cfg.requireExisting && '*wajib dipilih'}
+          </label>
+          <div style={styles.searchInputRow}>
+            <Search size={16} color="#8A8F8D" />
+            <input
+              style={{ border: 'none', outline: 'none', flex: 1, fontSize: 14, fontFamily: 'IBM Plex Mono, monospace' }}
+              placeholder="Ketik serial number..."
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              disabled={!!selected}
+            />
           </div>
-        )}
 
-        {selected && (
-          <div style={styles.selectedBox}>
-            <CheckCircle2 size={16} color="#1C7A63" />
-            Menggunakan alat yang sudah ada: <b>{form.item_name}</b> (SN: {form.serial_no})
-            <button type="button" style={styles.clearLink} onClick={clearSelection}>Batal, input alat baru</button>
-          </div>
-        )}
+          {searching && <p style={{ fontSize: 12, color: '#8A8F8D', marginTop: 8 }}>Mencari...</p>}
 
-        <p style={styles.hint}>Kalau alat tidak ditemukan, langsung isi form Informasi Alat di bawah sebagai alat baru.</p>
-      </div>
+          {searchResults.length > 0 && (
+            <div style={styles.searchResults}>
+              {searchResults.map((r) => (
+                <div key={r.id} style={styles.searchResultItem} onClick={() => selectExisting(r)}>
+                  <b>{r.items?.item_name}</b> — SN: {r.serial_no} ({r.items?.merk_brand}, {r.location_area || '-'})
+                </div>
+              ))}
+            </div>
+          )}
+
+          {selected && (
+            <div style={styles.selectedBox}>
+              <CheckCircle2 size={16} color="#1C7A63" />
+              Menggunakan alat yang sudah ada: <b>{form.item_name}</b> (SN: {form.serial_no})
+              {!cfg.requireExisting && (
+                <button type="button" style={styles.clearLink} onClick={clearSelection}>Batal, input alat baru</button>
+              )}
+            </div>
+          )}
+
+          <p style={styles.hint}>
+            {cfg.requireExisting
+              ? 'Alat harus dipilih dari hasil pencarian di atas sebelum bisa submit.'
+              : 'Kalau alat tidak ditemukan, langsung isi form di bawah sebagai alat baru.'}
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         <div style={styles.section}>Informasi Alat</div>
         <div style={styles.grid}>
           <Field label="Nama Alat *">
-            <input style={styles.input} required value={form.item_name} onChange={(e) => handleChange('item_name', e.target.value)} />
+            <input style={styles.input} required value={form.item_name} onChange={(e) => handleChange('item_name', e.target.value)} disabled={cfg.requireExisting && !selected} />
           </Field>
           <Field label="Merk">
-            <input style={styles.input} value={form.merk_brand} onChange={(e) => handleChange('merk_brand', e.target.value)} />
+            <input style={styles.input} value={form.merk_brand} onChange={(e) => handleChange('merk_brand', e.target.value)} disabled={cfg.requireExisting && !selected} />
           </Field>
           <Field label="Range">
             <input style={styles.input} value={form.range} onChange={(e) => handleChange('range', e.target.value)} />
           </Field>
           <Field label="Model / Tipe">
-            <input style={styles.input} value={form.type_model} onChange={(e) => handleChange('type_model', e.target.value)} />
+            <input style={styles.input} value={form.type_model} onChange={(e) => handleChange('type_model', e.target.value)} disabled={cfg.requireExisting && !selected} />
           </Field>
           <Field label="No. Seri">
-            <input style={styles.input} value={form.serial_no} onChange={(e) => handleChange('serial_no', e.target.value)} />
+            <input style={styles.input} value={form.serial_no} onChange={(e) => handleChange('serial_no', e.target.value)} disabled={cfg.requireExisting && !selected} />
           </Field>
           <Field label="ID Aset / No. Tag">
-            <input style={styles.input} value={form.asset_tag} onChange={(e) => handleChange('asset_tag', e.target.value)} />
+            <input style={styles.input} value={form.asset_tag} onChange={(e) => handleChange('asset_tag', e.target.value)} disabled={cfg.requireExisting && !selected} />
           </Field>
           <Field label="Lokasi">
-            <input style={styles.input} value={form.location_area} onChange={(e) => handleChange('location_area', e.target.value)} />
+            <input style={styles.input} value={form.location_area} onChange={(e) => handleChange('location_area', e.target.value)} disabled={cfg.requireExisting && !selected} />
           </Field>
           <Field label="Tanggal Pertama Digunakan">
-            <input type="date" style={styles.input} value={form.date_of_first_used} onChange={(e) => handleChange('date_of_first_used', e.target.value)} />
+            <input type="date" style={styles.input} value={form.date_of_first_used} onChange={(e) => handleChange('date_of_first_used', e.target.value)} disabled={cfg.requireExisting && !selected} />
           </Field>
           <Field label="Scope / Ruang Lingkup">
             <input style={styles.input} placeholder="Mis. massa, panjang" value={form.scope_of_instruments} onChange={(e) => handleChange('scope_of_instruments', e.target.value)} />
@@ -303,71 +385,101 @@ export default function InputKalibrasi({ profile, onNavigate }) {
 
         <div style={styles.section}>Informasi Kalibrasi</div>
         <div style={styles.grid}>
-          <Field label="No. Sertifikat" hint="Nomor final ditetapkan saat approval">
-            <input style={styles.input} placeholder="Otomatis saat approval" value={form.certificate_number_draft} onChange={(e) => handleChange('certificate_number_draft', e.target.value)} />
-          </Field>
+          {!cfg.forceExternal && (
+            <Field label="No. Sertifikat" hint="Nomor final ditetapkan saat generate certificate">
+              <input style={styles.input} placeholder="Otomatis saat generate" value={form.certificate_number_draft} onChange={(e) => handleChange('certificate_number_draft', e.target.value)} />
+            </Field>
+          )}
           <Field label="Tanggal Kalibrasi">
             <input type="date" style={styles.input} value={form.calibration_date} onChange={(e) => handleChange('calibration_date', e.target.value)} />
           </Field>
           <Field label="Tanggal Jatuh Tempo">
             <input type="date" style={styles.input} value={form.due_date} onChange={(e) => handleChange('due_date', e.target.value)} />
           </Field>
-          <Field label="Metode / Standar Acuan">
-            <input style={styles.input} placeholder="Mis. OIML R76" value={form.reference_method} onChange={(e) => handleChange('reference_method', e.target.value)} />
-          </Field>
-          <Field label="Suhu Ruangan (°C)">
-            <input type="number" step="0.1" style={styles.input} value={form.room_temperature} onChange={(e) => handleChange('room_temperature', e.target.value)} />
-          </Field>
-          <Field label="Kelembaban (%RH)">
-            <input type="number" step="1" style={styles.input} value={form.humidity} onChange={(e) => handleChange('humidity', e.target.value)} />
-          </Field>
-          <Field label="Nama Teknisi / Kalibrator" hint="Terisi otomatis dari akun Anda">
+
+          {cfg.showEnvFields && (
+            <>
+              <Field label="Metode / Standar Acuan">
+                <input style={styles.input} placeholder="Mis. OIML R76" value={form.reference_method} onChange={(e) => handleChange('reference_method', e.target.value)} />
+              </Field>
+              <Field label="Suhu Ruangan (°C)">
+                <input type="number" step="0.1" style={styles.input} value={form.room_temperature} onChange={(e) => handleChange('room_temperature', e.target.value)} />
+              </Field>
+              <Field label="Kelembaban (%RH)">
+                <input type="number" step="1" style={styles.input} value={form.humidity} onChange={(e) => handleChange('humidity', e.target.value)} />
+              </Field>
+            </>
+          )}
+
+          <Field label="Input Oleh" hint="Terisi otomatis dari akun Anda">
             <input style={styles.input} value={profile.full_name || ''} disabled />
           </Field>
-          <Field label="Instansi / Laboratorium">
-            <input style={styles.input} value={form.lab_name} onChange={(e) => handleChange('lab_name', e.target.value)} />
-          </Field>
+
+          {cfg.forceExternal && (
+            <Field label="Calibration By" hint="Nama teknisi/lab eksternal yang melakukan kalibrasi">
+              <input style={styles.input} required value={form.calibration_by_manual} onChange={(e) => handleChange('calibration_by_manual', e.target.value)} />
+            </Field>
+          )}
+
+          {cfg.showEnvFields && (
+            <Field label="Instansi / Laboratorium">
+              <input style={styles.input} value={form.lab_name} onChange={(e) => handleChange('lab_name', e.target.value)} />
+            </Field>
+          )}
         </div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, fontSize: 13, fontWeight: 600 }}>
-          <input type="checkbox" checked={form.is_external} onChange={(e) => handleChange('is_external', e.target.checked)} />
-          Kalibrasi Eksternal
-        </label>
+        {cfg.forceExternal && (
+          <div style={styles.extBox}>
+            <div style={{ ...styles.section, margin: '0 0 12px 0' }}>Sertifikat Eksternal</div>
+            <div style={styles.grid}>
+              <Field label="No. Sertifikat (dari Lab Eksternal)">
+                <input style={styles.input} required value={externalCertNumber} onChange={(e) => setExternalCertNumber(e.target.value)} />
+              </Field>
+              <Field label="Upload File Sertifikat (PDF)">
+                <input type="file" accept="application/pdf,image/*" onChange={(e) => setExternalCertFile(e.target.files[0])} />
+              </Field>
+            </div>
+          </div>
+        )}
 
-        <div style={styles.section}>Hasil Pengukuran</div>
-        <table style={styles.table}>
-          <thead>
-            <tr>
-              <th style={styles.th}>Titik Ukur</th>
-              <th style={styles.th}>Nilai Standar</th>
-              <th style={styles.th}>Nilai Terbaca</th>
-              <th style={styles.th}>Ketidakpastian</th>
-              <th style={styles.th}>Keterangan</th>
-              <th style={styles.th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {points.map((p, i) => (
-              <tr key={i}>
-                <td style={styles.td}><input style={{ ...styles.input, width: '100%' }} value={p.point_label} onChange={(e) => handlePointChange(i, 'point_label', e.target.value)} /></td>
-                <td style={styles.td}><input type="number" step="0.01" style={{ ...styles.input, width: '100%' }} value={p.standard_value} onChange={(e) => handlePointChange(i, 'standard_value', e.target.value)} /></td>
-                <td style={styles.td}><input type="number" step="0.01" style={{ ...styles.input, width: '100%' }} value={p.reading_value} onChange={(e) => handlePointChange(i, 'reading_value', e.target.value)} /></td>
-                <td style={styles.td}><input type="number" step="0.01" style={{ ...styles.input, width: '100%' }} value={p.uncertainty} onChange={(e) => handlePointChange(i, 'uncertainty', e.target.value)} /></td>
-                <td style={styles.td}><input style={{ ...styles.input, width: '100%' }} placeholder="Opsional" value={p.note} onChange={(e) => handlePointChange(i, 'note', e.target.value)} /></td>
-                <td style={styles.td}>
-                  {points.length > 1 && (
-                    <button type="button" onClick={() => removePoint(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8A8F8D' }}>
-                      <X size={16} />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <button type="button" style={styles.addBtn} onClick={addPoint}>
-          <Plus size={14} /> Tambah Titik Ukur
-        </button>
+        {cfg.showMeasurementPoints && (
+          <>
+            <div style={styles.section}>Hasil Pengukuran</div>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Titik Ukur</th>
+                  <th style={styles.th}>Nilai Standar</th>
+                  <th style={styles.th}>Nilai Terbaca</th>
+                  <th style={styles.th}>Ketidakpastian</th>
+                  <th style={styles.th}>Keterangan</th>
+                  <th style={styles.th}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {points.map((p, i) => (
+                  <tr key={i}>
+                    <td style={styles.td}><input style={{ ...styles.input, width: '100%' }} value={p.point_label} onChange={(e) => handlePointChange(i, 'point_label', e.target.value)} /></td>
+                    <td style={styles.td}><input type="number" step="0.01" style={{ ...styles.input, width: '100%' }} value={p.standard_value} onChange={(e) => handlePointChange(i, 'standard_value', e.target.value)} /></td>
+                    <td style={styles.td}><input type="number" step="0.01" style={{ ...styles.input, width: '100%' }} value={p.reading_value} onChange={(e) => handlePointChange(i, 'reading_value', e.target.value)} /></td>
+                    <td style={styles.td}><input type="number" step="0.01" style={{ ...styles.input, width: '100%' }} value={p.uncertainty} onChange={(e) => handlePointChange(i, 'uncertainty', e.target.value)} /></td>
+                    <td style={styles.td}><input style={{ ...styles.input, width: '100%' }} placeholder="Opsional" value={p.note} onChange={(e) => handlePointChange(i, 'note', e.target.value)} /></td>
+                    <td style={styles.td}>
+                      {points.length > 1 && (
+                        <button type="button" onClick={() => removePoint(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8A8F8D' }}>
+                          <X size={16} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button type="button" style={styles.addBtn} onClick={addPoint}>
+              <Plus size={14} /> Tambah Titik Ukur
+            </button>
+          </>
+        )}
 
         <div style={styles.section}>Kesimpulan</div>
         <div style={{ ...styles.grid, gridTemplateColumns: '1fr' }}>
@@ -385,7 +497,7 @@ export default function InputKalibrasi({ profile, onNavigate }) {
 
         {message && <p style={{ marginTop: 16 }}>{message}</p>}
         <div style={styles.submitRow}>
-          <button type="submit" disabled={loading} style={styles.submitBtn}>
+          <button type="submit" disabled={loading || !canSubmit} style={styles.submitBtn}>
             {loading ? 'Menyimpan...' : 'Ajukan untuk Persetujuan'}
           </button>
           <button type="button" style={styles.cancelBtn} onClick={() => onNavigate && onNavigate('dashboard')}>Batal</button>
