@@ -284,7 +284,11 @@ export default function Masterlist({ profile }) {
                     <td style={tdStyle}>{r.range}</td>
                     <td style={tdStyle}>{r.unit}</td>
                     <td style={tdStyle}>{r.item_serials?.serial_no}</td>
-                    <td style={tdStyle}>{r.certificate_number || '-'}</td>
+                    <td style={tdStyle}>
+  {r.certificate_url ? (
+    <a href={r.certificate_url} target="_blank" rel="noreferrer">{r.certificate_number}</a>
+  ) : (r.certificate_number || '-')}
+</td>
                     <td style={tdStyle}>{r.item_serials?.date_of_first_used || '-'}</td>
                     <td style={tdStyle}>{r.calibration_date}</td>
                     <td style={tdStyle}>{r.due_date}</td>
