@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Download, History, X } from 'lucide-react'
+import { Download, History, X, Search } from 'lucide-react'
 
-const thStyle = { border: '1px solid #ccc', padding: 8, background: '#f0f0f0', textAlign: 'left', whiteSpace: 'nowrap' }
+const thStyle = { border: '1px solid #ccc', padding: 8, background: '#f0f0f0', textAlign: 'left', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 2 }
 const tdStyle = { border: '1px solid #ccc', padding: 8, whiteSpace: 'nowrap' }
 
 const statusLabel = {
@@ -68,13 +68,13 @@ function HistoryModal({ serialId, itemName, serialNo, onClose }) {
           <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
             <thead>
               <tr>
-                <th style={thStyle}>Tanggal Kalibrasi</th>
-                <th style={thStyle}>Due Date</th>
-                <th style={thStyle}>Status</th>
-                <th style={thStyle}>Judgement</th>
-                <th style={thStyle}>No. Sertifikat</th>
-                <th style={thStyle}>Eksternal</th>
-                <th style={thStyle}>Catatan</th>
+                <th style={{ ...thStyle, position: 'static' }}>Tanggal Kalibrasi</th>
+                <th style={{ ...thStyle, position: 'static' }}>Due Date</th>
+                <th style={{ ...thStyle, position: 'static' }}>Status</th>
+                <th style={{ ...thStyle, position: 'static' }}>Judgement</th>
+                <th style={{ ...thStyle, position: 'static' }}>No. Sertifikat</th>
+                <th style={{ ...thStyle, position: 'static' }}>Eksternal</th>
+                <th style={{ ...thStyle, position: 'static' }}>Catatan</th>
               </tr>
             </thead>
             <tbody>
@@ -110,6 +110,7 @@ export default function Masterlist({ profile }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [historyTarget, setHistoryTarget] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
   const canManageStatus = profile?.role === 'admin' || profile?.role === 'qc'
 
   async function loadRecords() {
@@ -142,9 +143,9 @@ export default function Masterlist({ profile }) {
       note = window.prompt(`Keterangan (opsional) untuk status "${statusLabel[newStatus].text}":`) || null
     }
     const { error } = await supabase
-  .from('item_serials')
-  .update({ equipment_status: newStatus, status_note: note, equipment_status_changed_at: new Date().toISOString() })
-  .eq('id', serialId)
+      .from('item_serials')
+      .update({ equipment_status: newStatus, status_note: note, equipment_status_changed_at: new Date().toISOString() })
+      .eq('id', serialId)
 
     if (error) {
       alert('Gagal update status: ' + error.message)
@@ -161,7 +162,7 @@ export default function Masterlist({ profile }) {
       'Acceptance Tolerance', 'Judgement', 'Remark', 'Eksternal', 'Status Alat',
     ]
 
-    const rows = records.map((r, index) => [
+    const rows = filteredRecords.map((r, index) => [
       index + 1,
       r.item_serials?.items?.item_name || '',
       r.item_serials?.items?.type_model || '',
@@ -195,118 +196,144 @@ export default function Masterlist({ profile }) {
     URL.revokeObjectURL(url)
   }
 
+  const q = searchQuery.trim().toLowerCase()
+  const filteredRecords = q === '' ? records : records.filter((r) => {
+    const haystack = [
+      r.item_serials?.items?.item_name,
+      r.item_serials?.items?.type_model,
+      r.item_serials?.items?.merk_brand,
+      r.item_serials?.serial_no,
+      r.item_serials?.location_area,
+      r.certificate_number,
+    ].filter(Boolean).join(' ').toLowerCase()
+    return haystack.includes(q)
+  })
+
   if (loading) return <p style={{ padding: 20 }}>Memuat data...</p>
 
   return (
-    <div style={{ padding: 20, fontFamily: 'sans-serif', overflowX: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+    <div style={{ padding: 20, fontFamily: 'sans-serif', display: 'flex', flexDirection: 'column', height: '100vh', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
         <h2 style={{ margin: 0 }}>Masterlist Kalibrasi</h2>
-        <button
-          onClick={exportCSV}
-          style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
-            background: '#1B2422', color: '#fff', border: 'none', borderRadius: 8,
-            fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          }}
-        >
-          <Download size={15} /> Export Masterlist
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid #ccc', borderRadius: 8, padding: '6px 12px', background: '#fff' }}>
+            <Search size={15} color="#8A8F8D" />
+            <input
+              placeholder="Cari alat, serial, lokasi, sertifikat..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{ border: 'none', outline: 'none', fontSize: 13, width: 220 }}
+            />
+          </div>
+          <button
+            onClick={exportCSV}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+              background: '#1B2422', color: '#fff', border: 'none', borderRadius: 8,
+              fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            <Download size={15} /> Export Masterlist
+          </button>
+        </div>
       </div>
+
+      <p style={{ fontSize: 13, color: '#8A8F8D', margin: '0 0 8px 0' }}>
+        Menampilkan {filteredRecords.length} dari {records.length} data
+      </p>
 
       {records.length === 0 && <p>Belum ada data yang final approved.</p>}
 
       {records.length > 0 && (
-        <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
-          <thead>
-            <tr>
-              <th style={thStyle}>No</th>
-              <th style={thStyle}>Item</th>
-              <th style={thStyle}>Type/Model</th>
-              <th style={thStyle}>Merk/Brand</th>
-              <th style={thStyle}>Range</th>
-              <th style={thStyle}>Unit</th>
-              <th style={thStyle}>Serial No.</th>
-              <th style={thStyle}>Certificate Number</th>
-              <th style={thStyle}>Date of First Used</th>
-              <th style={thStyle}>Calibration Date</th>
-              <th style={thStyle}>Due Date</th>
-              <th style={thStyle}>Location (Area)</th>
-              <th style={thStyle}>Calibration By</th>
-              <th style={thStyle}>Scope of Instruments</th>
-              <th style={thStyle}>Acceptance Tolerance</th>
-              <th style={thStyle}>Judgement</th>
-              <th style={thStyle}>Remark</th>
-              <th style={thStyle}>Eksternal</th>
-              <th style={thStyle}>Status Alat</th>
-              <th style={thStyle}>Riwayat</th>
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((r, index) => {
-              const status = r.item_serials?.equipment_status || 'active'
-              const label = statusLabel[status] || statusLabel.active
-              return (
-                <tr key={r.id}>
-                  <td style={tdStyle}>{index + 1}</td>
-                  <td style={tdStyle}>{r.item_serials?.items?.item_name}</td>
-                  <td style={tdStyle}>{r.item_serials?.items?.type_model}</td>
-                  <td style={tdStyle}>{r.item_serials?.items?.merk_brand}</td>
-                  <td style={tdStyle}>{r.range}</td>
-                  <td style={tdStyle}>{r.unit}</td>
-                  <td style={tdStyle}>{r.item_serials?.serial_no}</td>
-                  <td style={tdStyle}>
-  {r.certificate_url ? (
-    <a href={r.certificate_url} target="_blank" rel="noreferrer">{r.certificate_number}</a>
-  ) : (r.certificate_number || '-')}
-</td>
-                  <td style={tdStyle}>{r.item_serials?.date_of_first_used || '-'}</td>
-                  <td style={tdStyle}>{r.calibration_date}</td>
-                  <td style={tdStyle}>{r.due_date}</td>
-                  <td style={tdStyle}>{r.item_serials?.location_area}</td>
-                  <td style={tdStyle}>{r.calibration_by}</td>
-                  <td style={tdStyle}>{r.scope_of_instruments}</td>
-                  <td style={tdStyle}>{r.acceptance_tolerance}</td>
-                  <td style={tdStyle}>{r.judgement}</td>
-                  <td style={tdStyle}>{r.remark || '-'}</td>
-                  <td style={tdStyle}>{r.is_external ? 'Ya' : 'Tidak'}</td>
-                  <td style={tdStyle}>
-                    {canManageStatus ? (
-                      <select
-                        value={status}
-                        onChange={(e) => handleStatusChange(r.item_serials?.id, e.target.value)}
-                        style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc' }}
+        <div style={{ flex: 1, overflow: 'auto', border: '1px solid #ddd', borderRadius: 6 }}>
+          <table style={{ borderCollapse: 'collapse', width: '100%', fontSize: 13 }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>No</th>
+                <th style={thStyle}>Item</th>
+                <th style={thStyle}>Type/Model</th>
+                <th style={thStyle}>Merk/Brand</th>
+                <th style={thStyle}>Range</th>
+                <th style={thStyle}>Unit</th>
+                <th style={thStyle}>Serial No.</th>
+                <th style={thStyle}>Certificate Number</th>
+                <th style={thStyle}>Date of First Used</th>
+                <th style={thStyle}>Calibration Date</th>
+                <th style={thStyle}>Due Date</th>
+                <th style={thStyle}>Location (Area)</th>
+                <th style={thStyle}>Calibration By</th>
+                <th style={thStyle}>Scope of Instruments</th>
+                <th style={thStyle}>Acceptance Tolerance</th>
+                <th style={thStyle}>Judgement</th>
+                <th style={thStyle}>Remark</th>
+                <th style={thStyle}>Eksternal</th>
+                <th style={thStyle}>Status Alat</th>
+                <th style={thStyle}>Riwayat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRecords.map((r, index) => {
+                const status = r.item_serials?.equipment_status || 'active'
+                const label = statusLabel[status] || statusLabel.active
+                return (
+                  <tr key={r.id}>
+                    <td style={tdStyle}>{index + 1}</td>
+                    <td style={tdStyle}>{r.item_serials?.items?.item_name}</td>
+                    <td style={tdStyle}>{r.item_serials?.items?.type_model}</td>
+                    <td style={tdStyle}>{r.item_serials?.items?.merk_brand}</td>
+                    <td style={tdStyle}>{r.range}</td>
+                    <td style={tdStyle}>{r.unit}</td>
+                    <td style={tdStyle}>{r.item_serials?.serial_no}</td>
+                    <td style={tdStyle}>{r.certificate_number || '-'}</td>
+                    <td style={tdStyle}>{r.item_serials?.date_of_first_used || '-'}</td>
+                    <td style={tdStyle}>{r.calibration_date}</td>
+                    <td style={tdStyle}>{r.due_date}</td>
+                    <td style={tdStyle}>{r.item_serials?.location_area}</td>
+                    <td style={tdStyle}>{r.calibration_by}</td>
+                    <td style={tdStyle}>{r.scope_of_instruments}</td>
+                    <td style={tdStyle}>{r.acceptance_tolerance}</td>
+                    <td style={tdStyle}>{r.judgement}</td>
+                    <td style={tdStyle}>{r.remark || '-'}</td>
+                    <td style={tdStyle}>{r.is_external ? 'Ya' : 'Tidak'}</td>
+                    <td style={tdStyle}>
+                      {canManageStatus ? (
+                        <select
+                          value={status}
+                          onChange={(e) => handleStatusChange(r.item_serials?.id, e.target.value)}
+                          style={{ padding: 4, borderRadius: 4, border: '1px solid #ccc' }}
+                        >
+                          <option value="active">Aktif</option>
+                          <option value="damaged">Rusak</option>
+                          <option value="lost">Hilang</option>
+                          <option value="retired">Tidak Dipakai</option>
+                        </select>
+                      ) : (
+                        <span style={{ color: label.color, background: label.bg, padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
+                          {label.text}
+                        </span>
+                      )}
+                    </td>
+                    <td style={tdStyle}>
+                      <button
+                        onClick={() => setHistoryTarget({
+                          serialId: r.item_serials?.id,
+                          itemName: r.item_serials?.items?.item_name,
+                          serialNo: r.item_serials?.serial_no,
+                        })}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px',
+                          background: '#fff', border: '1px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 12,
+                        }}
                       >
-                        <option value="active">Aktif</option>
-                        <option value="damaged">Rusak</option>
-                        <option value="lost">Hilang</option>
-                        <option value="retired">Tidak Dipakai</option>
-                      </select>
-                    ) : (
-                      <span style={{ color: label.color, background: label.bg, padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
-                        {label.text}
-                      </span>
-                    )}
-                  </td>
-                  <td style={tdStyle}>
-                    <button
-                      onClick={() => setHistoryTarget({
-                        serialId: r.item_serials?.id,
-                        itemName: r.item_serials?.items?.item_name,
-                        serialNo: r.item_serials?.serial_no,
-                      })}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 4, padding: '6px 10px',
-                        background: '#fff', border: '1px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 12,
-                      }}
-                    >
-                      <History size={13} /> Riwayat
-                    </button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                        <History size={13} /> Riwayat
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {historyTarget && (

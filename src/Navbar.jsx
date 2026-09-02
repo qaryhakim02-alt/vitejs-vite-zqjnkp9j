@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Clock, FileCheck, Table2, LayoutDashboard, LogOut, RefreshCw, FileWarning, AlertTriangle, Users, BarChart3, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Clock, FileCheck, Table2, LayoutDashboard, LogOut, RefreshCw, FileWarning, AlertTriangle, Users, BarChart3, ChevronDown, ChevronRight, Upload, FileUp } from 'lucide-react'
 
 const menuGroups = [
   {
@@ -24,6 +24,8 @@ const menuGroups = [
       { key: 'masterlist', label: 'Masterlist', icon: Table2 },
       { key: 'revisi', label: 'Perlu Diperbaiki', icon: FileWarning },
       { key: 'due_month', label: 'Alert Jatuh Tempo', icon: AlertTriangle },
+      { key: 'import', label: 'Import Data Awal', icon: Upload },
+      { key: 'bulk_cert', label: 'Upload Sertifikat Massal', icon: FileUp },
     ],
   },
   {
