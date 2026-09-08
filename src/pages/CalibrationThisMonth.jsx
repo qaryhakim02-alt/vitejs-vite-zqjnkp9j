@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 
 const styles = {
   wrap: { fontFamily: 'Inter, sans-serif', background: '#EEF2F0', minHeight: '100vh', padding: '28px 32px' },
   title: { fontFamily: 'Space Grotesk, sans-serif', fontSize: 26, fontWeight: 700, margin: '0 0 6px 0' },
   subtitle: { fontSize: 14, color: '#6B7371', marginBottom: 24 },
-  groupTitle: { fontSize: 15, fontWeight: 700, margin: '24px 0 10px 0', display: 'flex', alignItems: 'center', gap: 8 },
+  typeHeader: {
+    display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%',
+    background: '#fff', border: '1px solid #E4E9E7', borderRadius: 12, padding: '14px 18px',
+    cursor: 'pointer', marginBottom: 8, fontSize: 15, fontWeight: 700,
+  },
+  typeCount: { fontSize: 13, color: '#6B7371', fontWeight: 500 },
+  groupTitle: { fontSize: 14, fontWeight: 700, margin: '16px 0 10px 12px', display: 'flex', alignItems: 'center', gap: 8 },
   card: { background: '#fff', borderRadius: 12, border: '1px solid #E4E9E7', overflow: 'hidden' },
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { textAlign: 'left', fontSize: 11, letterSpacing: '0.04em', color: '#8A8F8D', textTransform: 'uppercase', padding: '10px 20px', borderBottom: '1px solid #E4E9E7' },
@@ -66,25 +73,59 @@ function GroupTable({ title, dotColor, records, emptyText }) {
   )
 }
 
+function TypeSection({ label, records, expanded, onToggle }) {
+  const overdue = records.filter((r) => r._tier === 'overdue')
+  const urgent = records.filter((r) => r._tier === 'urgent')
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <button style={styles.typeHeader} onClick={onToggle}>
+        <span>{label}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={styles.typeCount}>{records.length} alat</span>
+          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </span>
+      </button>
+
+      {expanded && (
+        <>
+          <GroupTable
+            title="🔴 Sudah Lewat Jatuh Tempo"
+            dotColor="#D64545"
+            records={overdue}
+            emptyText="Tidak ada alat yang terlambat."
+          />
+          <GroupTable
+            title="🟠 Jatuh Tempo dalam 30 Hari"
+            dotColor="#E2A63B"
+            records={urgent}
+            emptyText="Tidak ada alat yang jatuh tempo dalam 30 hari ke depan."
+          />
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function CalibrationThisMonth() {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
+  const [expanded, setExpanded] = useState({ internal: true, external: true })
 
   useEffect(() => {
     async function load() {
       setLoading(true)
-      // Ambil semua data approved yang due date-nya dalam rentang 60 hari ke depan, atau sudah lewat
       const now = new Date()
-      const in60Days = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
       const { data, error } = await supabase
         .from('calibration_records')
         .select(`
-          id, due_date, calibration_date, certificate_number, certificate_url, status,
+          id, due_date, calibration_date, certificate_number, certificate_url, status, is_external,
           item_serials ( serial_no, location_area, equipment_status, items ( item_name, type_model, merk_brand ) )
         `)
         .eq('status', 'approved')
-        .lte('due_date', in60Days)
+        .lte('due_date', in30Days)
         .order('due_date', { ascending: true })
 
       if (!error) setRecords(data)
@@ -95,40 +136,38 @@ export default function CalibrationThisMonth() {
 
   const now = new Date()
   const todayStr = now.toISOString().slice(0, 10)
-  const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-  const in60Days = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
-  const activeRecords = records.filter((r) => (r.item_serials?.equipment_status || 'active') === 'active')
-  const overdue = activeRecords.filter((r) => r.due_date < todayStr)
-  const urgent = activeRecords.filter((r) => r.due_date >= todayStr && r.due_date <= in30Days)
-  const upcoming = activeRecords.filter((r) => r.due_date > in30Days && r.due_date <= in60Days)
+  const activeRecords = records
+    .filter((r) => (r.item_serials?.equipment_status || 'active') === 'active')
+    .map((r) => ({ ...r, _tier: r.due_date < todayStr ? 'overdue' : 'urgent' }))
+
+  const internalRecords = activeRecords.filter((r) => !r.is_external)
+  const externalRecords = activeRecords.filter((r) => r.is_external)
+
+  function toggle(key) {
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }))
+  }
 
   return (
     <div style={styles.wrap}>
       <h1 style={styles.title}>Alert Jatuh Tempo Kalibrasi</h1>
-      <div style={styles.subtitle}>Pantau alat yang perlu dijadwalkan ulang kalibrasinya, dari yang paling mendesak.</div>
+      <div style={styles.subtitle}>Alat yang jatuh tempo dalam 30 hari ke depan atau sudah terlambat.</div>
 
       {loading ? (
         <p>Memuat data...</p>
       ) : (
         <>
-          <GroupTable
-            title="🔴 Sudah Lewat Jatuh Tempo"
-            dotColor="#D64545"
-            records={overdue}
-            emptyText="Tidak ada alat yang terlambat kalibrasi ulang. Bagus!"
+          <TypeSection
+            label="🏭 Kalibrasi Internal"
+            records={internalRecords}
+            expanded={expanded.internal}
+            onToggle={() => toggle('internal')}
           />
-          <GroupTable
-            title="🟠 Jatuh Tempo dalam 30 Hari (H-1 Bulan)"
-            dotColor="#E2A63B"
-            records={urgent}
-            emptyText="Tidak ada alat yang jatuh tempo dalam 30 hari ke depan."
-          />
-          <GroupTable
-            title="🟡 Jatuh Tempo dalam 60 Hari (H-2 Bulan)"
-            dotColor="#F2D06B"
-            records={upcoming}
-            emptyText="Tidak ada alat yang jatuh tempo dalam 60 hari ke depan."
+          <TypeSection
+            label="🌐 Kalibrasi Eksternal"
+            records={externalRecords}
+            expanded={expanded.external}
+            onToggle={() => toggle('external')}
           />
         </>
       )}

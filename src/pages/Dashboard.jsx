@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { Plus, Clock, FileWarning, FileCheck2, ArrowRight, AlertTriangle, Wrench, ClipboardList } from 'lucide-react'
+import { Plus, Clock, FileWarning, FileCheck2, ArrowRight, AlertTriangle, Wrench, ClipboardList, Building2, Globe } from 'lucide-react'
 
 function StatusBadge({ status }) {
   const map = {
@@ -118,6 +118,7 @@ export default function Dashboard({ profile, onNavigate }) {
   const [recent, setRecent] = useState([])
   const [stats, setStats] = useState({ total: 0, review: 0, draft: 0, approved: 0, dueSoon: 0, overdue: 0, pendingCert: 0 })
   const [equipmentStats, setEquipmentStats] = useState({ active: 0, damaged: 0, lost: 0, retired: 0 })
+  const [typeStats, setTypeStats] = useState({ internal: 0, external: 0 })
   const [trend, setTrend] = useState([])
   const [actionCount, setActionCount] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -130,7 +131,7 @@ export default function Dashboard({ profile, onNavigate }) {
 
       const [
         totalRes, reviewRes, draftRes, approvedRes, dueSoonRes, overdueRes, pendingCertRes,
-        activeRes, damagedRes, lostRes, retiredRes, recentRes, trendDatesRes,
+        activeRes, damagedRes, lostRes, retiredRes, internalRes, externalRes, recentRes, trendDatesRes,
       ] = await Promise.all([
         supabase.from('calibration_records').select('id', { count: 'exact', head: true }),
         supabase.from('calibration_records').select('id', { count: 'exact', head: true }).eq('status', 'review'),
@@ -143,6 +144,8 @@ export default function Dashboard({ profile, onNavigate }) {
         supabase.from('item_serials').select('id', { count: 'exact', head: true }).eq('equipment_status', 'damaged'),
         supabase.from('item_serials').select('id', { count: 'exact', head: true }).eq('equipment_status', 'lost'),
         supabase.from('item_serials').select('id', { count: 'exact', head: true }).eq('equipment_status', 'retired'),
+        supabase.from('calibration_records').select('id', { count: 'exact', head: true }).eq('status', 'approved').eq('is_external', false),
+supabase.from('calibration_records').select('id', { count: 'exact', head: true }).eq('status', 'approved').eq('is_external', true),
         supabase
           .from('calibration_records')
           .select(`
@@ -169,6 +172,7 @@ export default function Dashboard({ profile, onNavigate }) {
         lost: lostRes.count || 0,
         retired: retiredRes.count || 0,
       })
+      setTypeStats({ internal: internalRes.count || 0, external: externalRes.count || 0 })
       setRecent(recentRes.data || [])
       setTrend(buildMonthlyTrend((trendDatesRes.data || []).map((r) => r.calibration_date)))
       setLoading(false)
@@ -337,6 +341,17 @@ export default function Dashboard({ profile, onNavigate }) {
             <div className="legend-left"><span className="legend-dot" style={{ background: '#8A8F8D' }}></span>Hilang / Tidak Dipakai</div>
             <b>{equipmentStats.lost + equipmentStats.retired}</b>
           </div>
+          <div className="info-card">
+  <div className="info-card-title"><Building2 size={14} /> Internal vs Eksternal</div>
+  <div className="status-row">
+    <div className="status-row-left"><Building2 size={14} color="#3FA796" /> Kalibrasi Internal</div>
+    <div className="status-row-value" style={{ color: '#3FA796' }}>{typeStats.internal}</div>
+  </div>
+  <div className="status-row">
+    <div className="status-row-left"><Globe size={14} color="#E2A63B" /> Kalibrasi Eksternal</div>
+    <div className="status-row-value" style={{ color: '#E2A63B' }}>{typeStats.external}</div>
+  </div>
+</div>
         </div>
 
         <div className={`info-card ${dueAlertLevel === 'red' ? 'alert-card-red' : dueAlertLevel === 'yellow' ? 'alert-card-yellow' : ''}`}>

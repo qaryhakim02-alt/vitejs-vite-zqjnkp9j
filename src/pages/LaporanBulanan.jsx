@@ -129,17 +129,11 @@ export default function LaporanBulanan({ profile }) {
     const yearStart = `${year}-01-01`
     const yearEnd = `${year}-12-31`
 
-    const [planRes, actualRes, brokeRes, notesRes] = await Promise.all([
+    const [planRes, brokeRes, notesRes] = await Promise.all([
       supabase
         .from('calibration_records')
         .select('item_serial_id, calibration_date, due_date, item_serials ( equipment_status )')
         .eq('status', 'approved'),
-      supabase
-        .from('calibration_records')
-        .select('calibration_date')
-        .eq('status', 'approved')
-        .gte('calibration_date', yearStart)
-        .lte('calibration_date', yearEnd),
       supabase
         .from('item_serials')
         .select('equipment_status_changed_at, equipment_status')
@@ -149,6 +143,8 @@ export default function LaporanBulanan({ profile }) {
       supabase.from('monthly_report_notes').select('*').eq('year', year),
     ])
 
+    // Ambil siklus kalibrasi TERAKHIR tiap alat aktif saja (1 alat = 1 data),
+    // supaya Plan dan Actual dihitung dari sumber yang sama & adil dibandingkan.
     const latestPerSerial = {}
     ;(planRes.data || []).forEach((r) => {
       if (r.item_serials?.equipment_status !== 'active') return
@@ -159,17 +155,16 @@ export default function LaporanBulanan({ profile }) {
     })
 
     const planCounts = Array(12).fill(0)
-    Object.values(latestPerSerial).forEach((r) => {
-      if (!r.due_date) return
-      const d = new Date(r.due_date)
-      if (d.getFullYear() === year) planCounts[d.getMonth()] += 1
-    })
-
     const actualCounts = Array(12).fill(0)
-    ;(actualRes.data || []).forEach((r) => {
-      if (!r.calibration_date) return
-      const d = new Date(r.calibration_date)
-      if (d.getFullYear() === year) actualCounts[d.getMonth()] += 1
+    Object.values(latestPerSerial).forEach((r) => {
+      if (r.due_date) {
+        const dDue = new Date(r.due_date)
+        if (dDue.getFullYear() === year) planCounts[dDue.getMonth()] += 1
+      }
+      if (r.calibration_date) {
+        const dCal = new Date(r.calibration_date)
+        if (dCal.getFullYear() === year) actualCounts[dCal.getMonth()] += 1
+      }
     })
 
     const brokeCounts = Array(12).fill(0)

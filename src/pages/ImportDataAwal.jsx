@@ -126,7 +126,7 @@ async function processRow(row, profile) {
     }
 
     const calibrationDate = cleanDate(row.calibration_date)
-
+    const isExternalRow = row.calibration_by && row.calibration_by.trim().toUpperCase() !== 'QC VERIFICATION (INTERNAL)'
     const recordPayload = {
       item_serial_id: itemSerialId,
       scope_of_instruments: row.scope_of_instruments,
@@ -138,7 +138,7 @@ async function processRow(row, profile) {
       calibration_by: row.calibration_by || profile.full_name,
       judgement: normalizeJudgement(row.judgement),
       remark: row.remark,
-      is_external: false,
+      is_external: isExternalRow,
       status: 'approved',
       created_by: profile.id,
       reviewed_by: profile.id,
