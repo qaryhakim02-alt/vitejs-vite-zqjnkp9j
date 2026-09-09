@@ -3,10 +3,10 @@ import { supabase } from '../supabaseClient'
 import { Download, History, X, Search } from 'lucide-react'
 
 const thStyle = { border: '1px solid #ccc', padding: 8, background: '#f0f0f0', textAlign: 'left', whiteSpace: 'nowrap', position: 'sticky', top: 0, zIndex: 2 }
-const filterThStyle = { border: '1px solid #ccc', padding: 4, background: '#fafafa', position: 'sticky', top: 33, zIndex: 2, verticalAlign: 'top' }
+const filterThStyle = { border: '1px solid #ccc', padding: 4, background: '#fafafa', verticalAlign: 'top' }
 const tdStyle = { border: '1px solid #ccc', padding: 8, whiteSpace: 'nowrap' }
-const filterSelectStyle = { width: '100%', padding: '4px 4px', fontSize: 12, border: '1px solid #ccc', borderRadius: 4, boxSizing: 'border-box', maxWidth: 140 }
-const dateFilterStackStyle = { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 90 }
+const filterSelectStyle = { width: '100%', maxWidth: 140, padding: '4px 4px', fontSize: 12, border: '1px solid #ccc', borderRadius: 4, boxSizing: 'border-box', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+const dateFilterStackStyle = { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 90, maxWidth: 100 }
 
 const monthNamesId = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 

@@ -126,52 +126,60 @@ export default function LaporanBulanan({ profile }) {
 
   async function loadReport() {
     setLoading(true)
-    const yearStart = `${year}-01-01`
-    const yearEnd = `${year}-12-31`
 
-    const [planRes, brokeRes, notesRes] = await Promise.all([
+    const [allRes, notesRes] = await Promise.all([
       supabase
         .from('calibration_records')
         .select('item_serial_id, calibration_date, due_date, item_serials ( equipment_status )')
         .eq('status', 'approved'),
-      supabase
-        .from('item_serials')
-        .select('equipment_status_changed_at, equipment_status')
-        .neq('equipment_status', 'active')
-        .gte('equipment_status_changed_at', yearStart)
-        .lte('equipment_status_changed_at', yearEnd),
       supabase.from('monthly_report_notes').select('*').eq('year', year),
     ])
 
-    // Ambil siklus kalibrasi TERAKHIR tiap alat aktif saja (1 alat = 1 data),
-    // supaya Plan dan Actual dihitung dari sumber yang sama & adil dibandingkan.
-    const latestPerSerial = {}
-    ;(planRes.data || []).forEach((r) => {
-      if (r.item_serials?.equipment_status !== 'active') return
-      const existing = latestPerSerial[r.item_serial_id]
-      if (!existing || r.calibration_date > existing.calibration_date) {
-        latestPerSerial[r.item_serial_id] = r
-      }
+    // Kelompokkan tiap siklus kalibrasi per alat, urutkan dari yang paling lama
+    const bySerial = {}
+    ;(allRes.data || []).forEach((r) => {
+      if (!r.item_serial_id) return
+      if (!bySerial[r.item_serial_id]) bySerial[r.item_serial_id] = []
+      bySerial[r.item_serial_id].push(r)
     })
 
     const planCounts = Array(12).fill(0)
     const actualCounts = Array(12).fill(0)
-    Object.values(latestPerSerial).forEach((r) => {
-      if (r.due_date) {
-        const dDue = new Date(r.due_date)
-        if (dDue.getFullYear() === year) planCounts[dDue.getMonth()] += 1
-      }
-      if (r.calibration_date) {
-        const dCal = new Date(r.calibration_date)
-        if (dCal.getFullYear() === year) actualCounts[dCal.getMonth()] += 1
-      }
-    })
-
     const brokeCounts = Array(12).fill(0)
-    ;(brokeRes.data || []).forEach((r) => {
-      if (!r.equipment_status_changed_at) return
-      const d = new Date(r.equipment_status_changed_at)
-      if (d.getFullYear() === year) brokeCounts[d.getMonth()] += 1
+
+    Object.values(bySerial).forEach((cyclesUnsorted) => {
+      const cycles = [...cyclesUnsorted].sort((a, b) =>
+        (a.calibration_date || '').localeCompare(b.calibration_date || '')
+      )
+      const equipmentStatus = cycles[cycles.length - 1]?.item_serials?.equipment_status || 'active'
+
+      const todayStr = new Date().toISOString().slice(0, 10)
+
+cycles.forEach((cycle, i) => {
+  if (!cycle.due_date) return
+  const d = new Date(cycle.due_date)
+  if (d.getFullYear() !== year) return
+  const month = d.getMonth()
+
+  // Tiap jatuh tempo = 1 "rencana" di bulan itu
+  planCounts[month] += 1
+
+  const hasNextCycle = i < cycles.length - 1
+  const isPastDue = cycle.due_date < todayStr
+
+  if (hasNextCycle) {
+    // Ada siklus berikutnya -> sudah dikalibrasi ulang -> selesai
+    actualCounts[month] += 1
+  } else if (isPastDue) {
+    // Jatuh tempo sudah lewat, tidak ada siklus berikutnya -> harus dipastikan
+    if (equipmentStatus !== 'active') {
+      brokeCounts[month] += 1
+    } else {
+      actualCounts[month] += 1
+    }
+  }
+  // Kalau belum ada siklus berikutnya DAN belum lewat jatuh tempo: masih rencana masa depan, belum dihitung
+})
     })
 
     let outstandingCarry = 0
